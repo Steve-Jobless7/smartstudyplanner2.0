@@ -42,7 +42,7 @@ class TaskDialog(tk.Toplevel):
             self.on_save=on_save
             self.var_title=StringVar(value=task.title if task else "")
             self.var_subject=StringVar(value=task.subject if task else "")
-            self.var_due=StringVar(value=task.due_date if task else today_str())
+            self.var_due=StringVar(value=task.duedate if task else today_str())
             self.var_status=StringVar(value=task.status if task else statusoptions[0])
             frm=ttk.Frame(self,padding=12)
             frm.pack(fill=BOTH,expand=YES)
@@ -87,7 +87,7 @@ class App(ttk.Frame):
             self.pack(fill=BOTH,expand=YES)
             self.tasks:List[Task]=[]
             self.search_var=StringVar()
-            self.sort_key="due_date"
+            self.sort_key="duedate"
             self.sort_reverse=False
             self._apply_styles()
             self._build_header()
@@ -113,24 +113,57 @@ class App(ttk.Frame):
             entry.pack(side=LEFT)
             entry.bind("<KeyRelease>",lambda e: self.refresh_table())
 
+            ttk.Label(top, text="  Status  ").pack(side=LEFT,padx=(12,0))
+            self.cb_filter=ttk.Combobox(
+                  top,
+                  textvariable=self.status_filter_var,
+                  values=["ALL"] + statusoptions,
+                  state="readonly",
+                  width=14
+                  )
+            self.cb_filter.pack(side=LEFT)
+            self.cb_filter.bind("<<CombaBoxSelected>>",lambda e: self.refresh_views())
+            
             ttk.Button(top, text="Add Task (Ctrl+N)",bootstyle=SUCCESS,command=self.
             open_add_dialog).pack(side=RIGHT,padx=6)
             ttk.Button(top, text="Delete", bootstyle="DANGER", command=self.delete_selected).pack(side=RIGHT,padx=6)
             ttk.Button(top, text="Edit Task (Ctrl+E)",bootstyle=INFO,command=self.
             open_edit_dialog).pack(side=RIGHT,padx=6)
-      def _build_table(self):
-            cols=("title", "subject","due_date")
-            self.tree=ttk.Treeview(self,columns=cols,show="headings",height=14)
+      def _build_center(self):
+            self.nb= ttk.Notebook(self)
+            self.nb.pack(fill=BOTH,expand=YES)
+            self.tab_list-ttk.Frame(self.nb,padding=8)
+            self.nb.add(self.tab_list, text="list")
+            cols=("title", "subject","duedate","status")
+            self.tree=ttk.Treeview(self.tab_list,columns=cols,show="headings",height=14)
             self.tree.pack(fill=BOTH,expand=YES)
             self._define_col("title","Title",380,"w")
             self._define_col("subject","Subject",160,"w")
-            self._define_col("due_date","Due Date",120,"w")
+            self._define_col("duedate","Due Date",120,"w")
 
             for c in cols:
                   self.tree.heading(c,command=lambda col=c:self._sort_by(col))
 
             self.tree.tag_configure("even",background="white")
             self.tree.tag_configure("odd",background="white")
+           
+            self.tab_board=ttk.Frame(self.nb,padding=8)
+            self.nb.add(self.tab_board,text= "board")
+            board=ttk.Frame(self.tab_board)
+            board.pack(fill=BOTH,expand=YES)
+            board.grid_columnconfigure(0, weight=1, unifomr="col")
+            board.grid_columnconfigure(1, weight=1, unifomr="col")
+            board.grid_columnconfigure(2, weight=1, unifomr="col")
+            self.col_frames={}
+            for idx, status in enumerate(statusoptions):
+                  col=ttk.Frame(board,padding=6)
+                  col.grid(row=0,column=idx,sticky=NSEW,padx=6)
+                  head=ttk.label(col,text=status,font=("Segoe UI", 12, "bold"))
+                  head.pack(anchor=W,pady=(0,6))
+                  inner=ttk.Frame(col)
+                  inner.pack(fill=BOTH,expand=YES)
+                  self.col_frames[status]=inner
+
       def _define_col(self,key,label,width,anchor):
                   self.tree.heading(key,text=label,anchor=anchor)
                   self.tree.column(key,width=width,anchor=anchor,stretch=True)
@@ -154,16 +187,17 @@ class App(ttk.Frame):
             if not task:
                   messagebox.showerror("Edit Task","Could not find the task asociated with the iid") 
                   return
-            def apply_edits(newtitle:str,newsubject:str,newdue:str):
+            def apply_edits(newtitle:str,newsubject:str,newdue:str,newstatus:str):
                   task.title=newtitle
                   task.subject=newsubject
                   task.duedate=newdue
+                  task.status=newstatus
                   self.status("Task has been updated")
                   self.refresh_table()
             TaskDialog(self,on_save=apply_edits,task=task)         
             
-      def _add_task(self,title:str,subject:str, due:str):
-            t=Task(id=str(uuid.uuid4()),title=title,subject=subject,due_date=due)
+      def _add_task(self,title:str,subject:str, due:str,status:str):
+            t=Task(id=str(uuid.uuid4()),title=title,subject=subject,duedate=due,status=status)
             self.tasks.append(t)
             self.status("Task Added")
             self.refresh_table()
@@ -196,14 +230,23 @@ class App(ttk.Frame):
             keyfunc={
                   "title":lambda t: t.title.lower(),
                   "subject":lambda t: t.subject.lower(),
-                  "due_date":lambda t:t.due_date,
-            }.get(self.sort_key, lambda t:t.due_date)
+                  "duedate":lambda t:t.duedate,
+            }.get(self.sort_key, lambda t:t.duedate)
             return sorted(items, key=keyfunc,reverse=self.sort_reverse)
       def refresh_table(self):
             for iid in self.tree.get_children():
                   self.tree.delete(iid)
             for i,t in enumerate(self._filtered_sorted()):
-                   self.tree.insert("",tk.END, iid=t.id,values=(t.title,t.subject,t.due_date),tags=("even" if i % 2 ==0 else "odd"))
+                   self.tree.insert("",tk.END, iid=t.id,values=(t.title,t.subject,t.duedate,t.status),tags=("even" if i % 2 ==0 else "odd"))
+
+      def refresh_views(self):
+            self.refresh_table()
+            self.refresh_board()
+      
+      def refresh_board(self):
+            for status, frame in self.col_frames.items():
+                  pass
+      
       def status(self,msg:str):
             self.status_var.set(msg)
 
