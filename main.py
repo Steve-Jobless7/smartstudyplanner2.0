@@ -24,7 +24,7 @@ class Task:
     title:str
     subject:str
     duedate:str
-    status:str
+    status:str="To-Do"
 def today_str()->str:
         return datetime.now().strftime(dateformat)
 def valid_date(s:str)->bool:
@@ -47,7 +47,9 @@ class TaskDialog(tk.Toplevel):
             frm=ttk.Frame(self,padding=12)
             frm.pack(fill=BOTH,expand=YES)
             ttk.Label(frm,text="Title").grid(row=0,column=0,sticky=E,padx=6,pady=6)
-            ttk.Entry(frm,textvariable=self.var_title,width=36).grid(row=0,column=1,sticky=W,padx=6,pady=6)
+            e_title=ttk.Entry(frm,textvariable=self.var_title,width=36)
+            e_title.grid(row=0,column=1,sticky=W,padx=6,pady=6)
+            e_title.focus_set()
             ttk.Label(frm,text="Subject").grid(row=1,column=0,sticky=E,padx=6,pady=6)
             ttk.Entry(frm,textvariable=self.var_subject,width=36).grid(row=1,column=1,sticky=W,padx=6,pady=6)
             ttk.Label(frm,text="Due Date(yyyy/mm/dd)").grid(row=2,column=0,sticky=E,padx=6,pady=6)
@@ -84,6 +86,7 @@ class TaskDialog(tk.Toplevel):
 class App(ttk.Frame):
       def __init__(self,master):
             super().__init__(master,padding=12)
+            self.status_filter_var=StringVar(value="ALL")
             self.pack(fill=BOTH,expand=YES)
             self.tasks:List[Task]=[]
             self.search_var=StringVar()
@@ -91,7 +94,7 @@ class App(ttk.Frame):
             self.sort_reverse=False
             self._apply_styles()
             self._build_header()
-            self._build_table()
+            self._build_center()
             self._build_statusbar()
             self._tick()
             self.bind_all("<Control-n>",lambda e:self.open_add_dialog())
@@ -132,7 +135,7 @@ class App(ttk.Frame):
       def _build_center(self):
             self.nb= ttk.Notebook(self)
             self.nb.pack(fill=BOTH,expand=YES)
-            self.tab_list-ttk.Frame(self.nb,padding=8)
+            self.tab_list=ttk.Frame(self.nb,padding=8)
             self.nb.add(self.tab_list, text="list")
             cols=("title", "subject","duedate","status")
             self.tree=ttk.Treeview(self.tab_list,columns=cols,show="headings",height=14)
@@ -140,6 +143,7 @@ class App(ttk.Frame):
             self._define_col("title","Title",380,"w")
             self._define_col("subject","Subject",160,"w")
             self._define_col("duedate","Due Date",120,"w")
+            self._define_col("status","Status",120,"w")
 
             for c in cols:
                   self.tree.heading(c,command=lambda col=c:self._sort_by(col))
@@ -151,14 +155,14 @@ class App(ttk.Frame):
             self.nb.add(self.tab_board,text= "board")
             board=ttk.Frame(self.tab_board)
             board.pack(fill=BOTH,expand=YES)
-            board.grid_columnconfigure(0, weight=1, unifomr="col")
-            board.grid_columnconfigure(1, weight=1, unifomr="col")
-            board.grid_columnconfigure(2, weight=1, unifomr="col")
+            board.grid_columnconfigure(0, weight=1, uniform="col")
+            board.grid_columnconfigure(1, weight=1, uniform="col")
+            board.grid_columnconfigure(2, weight=1, uniform="col")
             self.col_frames={}
             for idx, status in enumerate(statusoptions):
                   col=ttk.Frame(board,padding=6)
                   col.grid(row=0,column=idx,sticky=NSEW,padx=6)
-                  head=ttk.label(col,text=status,font=("Segoe UI", 12, "bold"))
+                  head=ttk.Label(col,text=status,font=("Segoe UI", 12, "bold"))
                   head.pack(anchor=W,pady=(0,6))
                   inner=ttk.Frame(col)
                   inner.pack(fill=BOTH,expand=YES)
@@ -245,7 +249,16 @@ class App(ttk.Frame):
       
       def refresh_board(self):
             for status, frame in self.col_frames.items():
-                  pass
+                  for child in frame.winfo_children():
+                        child.destroy()
+            for t in self._filtered_sorted():
+                  parent=self.col_frames.get(t.status)
+                  if not parent:
+                        continue
+                  card=ttk.Frame(parent, padding=8)
+                  card.pack(fill=X,pady=6)
+                  ttk.Label(card, text=t.title, font=("Segoi U",10,"bold")).pack(anchor=W)
+                  ttk.Label(card,text=f"{t.subject}- Due {t.duedate}").pack(anchor=W)
       
       def status(self,msg:str):
             self.status_var.set(msg)
