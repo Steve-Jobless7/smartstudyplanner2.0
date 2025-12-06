@@ -60,7 +60,7 @@ class TaskDialog(tk.Toplevel):
             btns.grid(row=4,column=0,columnspan=2,pady=10)
             ttk.Button(btns,text="Cancel",command=self.destroy).pack(side=RIGHT,padx=6)
             ttk.Button(btns,text="Save",bootstyle=SUCCESS,command=self._save).pack(side=RIGHT)
-            self.bind("<Return>",lambda e:self.save())
+            self.bind("<Return>",lambda e:self._save())
             self.bind("<Escape>",lambda e:self.destroy())
             self.update_idletasks()
             self.geometry(f"+{parent.winfo_rootx()+60}+{parent.winfo_rooty()+60}")
@@ -125,7 +125,7 @@ class App(ttk.Frame):
                   width=14
                   )
             self.cb_filter.pack(side=LEFT)
-            self.cb_filter.bind("<<CombaBoxSelected>>",lambda e: self.refresh_views())
+            self.cb_filter.bind("<<ComboBoxSelected>>",lambda e: self.refresh_views())
             
             ttk.Button(top, text="Add Task (Ctrl+N)",bootstyle=SUCCESS,command=self.
             open_add_dialog).pack(side=RIGHT,padx=6)
