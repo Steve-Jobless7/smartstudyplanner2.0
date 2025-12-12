@@ -2,7 +2,7 @@ import uuid
 
 from dataclasses import dataclass
 
-from datetime import datetime
+from datetime import datetime, date
 
 from typing import List, Optional
 
@@ -17,6 +17,9 @@ dateformat="%Y/%m/%d"
 apptitle="Smart Study Planner"
 statusoptions=["To Do", "Done","In progress"]
 statusorder={a:b for b,a in enumerate(statusoptions)}
+
+CHECK_EMPTY = "☐" 
+CHECK_FULL = "☑"
 
 @dataclass
 class Task:
@@ -33,6 +36,12 @@ def valid_date(s:str)->bool:
             return True
         except Exception:
             return False
+def parse_date(s:str)-> Optional[date]:
+      try:
+            return datetime.strptime(s, dateformat).date()
+      except Exception:
+            return None
+
 class TaskDialog(tk.Toplevel):
       def __init__(self,parent,on_save,task:Optional[Task]=None):
             super().__init__(parent)
@@ -100,7 +109,8 @@ class App(ttk.Frame):
             self.bind_all("<Control-n>",lambda e:self.open_add_dialog())
             self.bind_all("<Delete>",lambda e:self.delete_selected())
             self.bind_all("<Control-e>",lambda e:self.open_edit_dialog())
-      
+            self.tree.bind("<Button-1>",lambda e:self._on_tree_click, add="+")     
+
       def _apply_styles(self):
             s=ttk.Style()
             s.configure("Treeview",rowheight=28,padding=2)
@@ -125,7 +135,7 @@ class App(ttk.Frame):
                   width=14
                   )
             self.cb_filter.pack(side=LEFT)
-            self.cb_filter.bind("<<ComboBoxSelected>>",lambda e: self.refresh_views())
+            self.cb_filter.bind("<<ComboxSelected>>",lambda e: self.refresh_views())
             
             ttk.Button(top, text="Add Task (Ctrl+N)",bootstyle=SUCCESS,command=self.
             open_add_dialog).pack(side=RIGHT,padx=6)
@@ -137,20 +147,25 @@ class App(ttk.Frame):
             self.nb.pack(fill=BOTH,expand=YES)
             self.tab_list=ttk.Frame(self.nb,padding=8)
             self.nb.add(self.tab_list, text="list")
-            cols=("title", "subject","duedate","status")
+            cols=("check","title", "subject","duedate","status")
             self.tree=ttk.Treeview(self.tab_list,columns=cols,show="headings",height=14)
             self.tree.pack(fill=BOTH,expand=YES)
+            self._define_col("check","✓",   48,  tk.CENTER)
             self._define_col("title","Title",380,"w")
             self._define_col("subject","Subject",160,"w")
             self._define_col("duedate","Due Date",120,"w")
             self._define_col("status","Status",120,"w")
+            
 
             for c in cols:
                   self.tree.heading(c,command=lambda col=c:self._sort_by(col))
 
             self.tree.tag_configure("even",background="white")
             self.tree.tag_configure("odd",background="white")
-           
+            
+            self.tree.tag_configure("today", background="lightblue")
+            self.tree.tag_configure("overdue", foreground="red")
+
             self.tab_board=ttk.Frame(self.nb,padding=8)
             self.nb.add(self.tab_board,text= "board")
             board=ttk.Frame(self.tab_board)
@@ -240,8 +255,23 @@ class App(ttk.Frame):
       def refresh_table(self):
             for iid in self.tree.get_children():
                   self.tree.delete(iid)
+            today= date.today()
+            
             for i,t in enumerate(self._filtered_sorted()):
-                   self.tree.insert("",tk.END, iid=t.id,values=(t.title,t.subject,t.duedate,t.status),tags=("even" if i % 2 ==0 else "odd"))
+                  tags=["even" if i % 2 ==0 else "odd"]
+                  chk=CHECK_FULL if t.status=="Done" else CHECK_EMPTY
+                  
+            d=parse_date(t.due_date)
+            if d:
+                  if d < today:
+                        tags.append("overdue")
+                  elif d == today:
+                        tags.append("today")
+            self.tree.insert(
+                  "", tk.END, iid=t.id,
+                  values=(chk,t.title,t.subject,t.duedate, t.status),
+                  tags=tuple(tags)
+            )
 
       def refresh_views(self):
             self.refresh_table()
@@ -257,7 +287,7 @@ class App(ttk.Frame):
                         continue
                   card=ttk.Frame(parent, padding=8)
                   card.pack(fill=X,pady=6)
-                  ttk.Label(card, text=t.title, font=("Segoi U",10,"bold")).pack(anchor=W)
+                  ttk.Label(card, text=t.title, font=("Segoe U",10,"bold")).pack(anchor=W)
                   ttk.Label(card,text=f"{t.subject}- Due {t.duedate}").pack(anchor=W)
       
       def status(self,msg:str):
@@ -266,6 +296,29 @@ class App(ttk.Frame):
       def _tick(self):
             self.clock_var.set(datetime.now().strftime("%Y/%m/%d %H:%M:%S"))   
             self.after(1000,self._tick)
+
+      def _on_tree_click(self, event):
+            region=self.tree.identify_region(event.x, event.y)
+            if region !="cell":
+                  return
+            col=self.tree.identify_column(event.x)
+            row_iid=self.tree.identify_row(event.y)
+            if not row_iid:
+                  return
+            if col !="#1":
+                  return
+            task = next((t for t in self.tasks if t.id == row_iid), None)
+            if not task:
+                  return
+            
+            if task.status=="Done":
+               task.status="To-Do"
+               self.status("Marked as To-Do")
+            else:
+                  task.status="Done"
+                  self.status("Marked as Done")
+            self.refresh_views()
+
 def main():
             style=Style(theme="minty")
             root=style.master
