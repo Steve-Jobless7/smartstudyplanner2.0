@@ -261,7 +261,7 @@ class App(ttk.Frame):
                   tags=["even" if i % 2 ==0 else "odd"]
                   chk=CHECK_FULL if t.status=="Done" else CHECK_EMPTY
                   
-            d=parse_date(t.due_date)
+            d=parse_date(t.duedate)
             if d:
                   if d < today:
                         tags.append("overdue")
