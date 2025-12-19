@@ -1,6 +1,12 @@
 import uuid
 
-from dataclasses import dataclass
+import os
+ 
+import json
+
+import csv
+
+from dataclasses import dataclass, asdict   
 
 from datetime import datetime, date
 
@@ -8,16 +14,20 @@ from typing import List, Optional
 
 import tkinter as tk
 
-from tkinter import ttk, messagebox, StringVar
+from tkinter import ttk, messagebox, StringVar, filedialog as fd
 
 from ttkbootstrap import Style
 
 from ttkbootstrap.constants import *
+
+
 dateformat="%Y/%m/%d"
 apptitle="Smart Study Planner"
 statusoptions=["To Do", "Done","In progress"]
 statusorder={a:b for b,a in enumerate(statusoptions)}
-
+DATA_FILE="planner.json"
+BACKUP_DIR="backups"
+CSV_HEADERS=["id","title","subject","duedate","status"]
 CHECK_EMPTY = "☐" 
 CHECK_FULL = "☑"
 
@@ -27,7 +37,7 @@ class Task:
     title:str
     subject:str
     duedate:str
-    status:str="To-Do"
+    status:str="To Do"
 def today_str()->str:
         return datetime.now().strftime(dateformat)
 def valid_date(s:str)->bool:
@@ -41,6 +51,46 @@ def parse_date(s:str)-> Optional[date]:
             return datetime.strptime(s, dateformat).date()
       except Exception:
             return None
+
+class storage:
+      """Tiny JSON storage helper"""
+      def __init__(self,path: str):
+            return []
+      def load(self) ->List[Task]:
+            if not os.path.exists(self.path):
+                  return[]
+            try:
+                  with open(self.path,"r", encoding="utf-8") as f:
+                        raw= json.load(f)
+            except Exception:
+                  return []
+            tasks: List[Task]=[]
+            if isinstance(raw,list):
+                  for item in raw:
+                        if not isinstance(item,dict):
+                              continue
+                        
+                  t= Task(
+                        tid=str(item.get("id") or uuid.uuid4())
+                        title=str(item.get("title") or "").strip()
+                        subject=str(item.get("subject") or "").strip()
+                        duedate=str(item.get("duedate") or today_str()).strip()
+                        status=str(item.get("status") or "To Do").strip()
+                        if not title or not subject or not valid_date(duedate):
+                          continue
+                        if status not in statusoptions:
+                          status="To Do"
+                        tasks.append(Task(id=tid, title=title, subject=subject,duedate=duedate,status=status))
+                        
+                  )
+                  tasks.append(t)
+            return tasks
+      def save(self, tasks: List[Task]) -> None:
+            payload = [asdict(t) for t in tasks]
+            tmp = self.path + ".tmp"
+            with open(tmp,"w",encoding="utf-8") as f:
+                  json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self.path)
 
 class TaskDialog(tk.Toplevel):
       def __init__(self,parent,on_save,task:Optional[Task]=None):
@@ -101,6 +151,7 @@ class App(ttk.Frame):
             self.search_var=StringVar()
             self.sort_key="duedate"
             self.sort_reverse=False
+            self.storage=Storage(DATA_FILE)
             self._apply_styles()
             self._build_header()
             self._build_center()
@@ -109,7 +160,8 @@ class App(ttk.Frame):
             self.bind_all("<Control-n>",lambda e:self.open_add_dialog())
             self.bind_all("<Delete>",lambda e:self.delete_selected())
             self.bind_all("<Control-e>",lambda e:self.open_edit_dialog())
-            self.tree.bind("<Button-1>",lambda e:self._on_tree_click, add="+")     
+            self.tree.bind("<Button-1>",lambda e:self._on_tree_click, add="+")  
+            self._load_initial()   
 
       def _apply_styles(self):
             s=ttk.Style()
@@ -212,14 +264,16 @@ class App(ttk.Frame):
                   task.duedate=newdue
                   task.status=newstatus
                   self.status("Task has been updated")
-                  self.refresh_table()
+                  self.persist()
+                  self.refresh_views()
             TaskDialog(self,on_save=apply_edits,task=task)         
             
       def _add_task(self,title:str,subject:str, due:str,status:str):
             t=Task(id=str(uuid.uuid4()),title=title,subject=subject,duedate=due,status=status)
             self.tasks.append(t)
             self.status("Task Added")
-            self.refresh_table()
+            self.persist()
+            self.refresh_views()
 
       def delete_selected(self):
             iid=self._selected_iid()
@@ -228,7 +282,8 @@ class App(ttk.Frame):
             if messagebox.askyesno("Delete", "Delete selected task?"):
                   self.tasks=[t for t in self.tasks if t.id !=iid]
                   self.status("Task Deleted")
-                  self.refresh_table()
+                  self.persist()
+                  self.refresh_views()
             
       def _selected_iid(self) -> Optional[str]:
             sel=self.tree.selection()
@@ -312,12 +367,29 @@ class App(ttk.Frame):
                   return
             
             if task.status=="Done":
-               task.status="To-Do"
-               self.status("Marked as To-Do")
+               task.status="To Do"
+               self.status("Marked as To Do")
             else:
                   task.status="Done"
                   self.status("Marked as Done")
+            
+            self.persist()
             self.refresh_views()
+      def _load_initial(self):
+            loaded=self.storage.load()
+            self.tasks=loaded
+            self.refresh_views()
+            self.status(f"Loaded {len(self.tasks)} task(s).")
+      def persist(self):
+            try:
+                  self.storage.save(self.tasks)
+            except Exception as e:
+                  messagebox.showerror("Save Error", f"Could not save tasks:\n{e}")
+      def on_close(self):
+            try:
+                  self.persist()
+            finally:
+                  self.winfo_toplevel().destroy()
 
 def main():
             style=Style(theme="minty")
@@ -328,6 +400,7 @@ def main():
             app=App(root)
 
             root.mainloop()
+            root.protocol("WM_DELETE_WINDOW",app.on_close)  
       
 if __name__ == "__main__":
             main()
