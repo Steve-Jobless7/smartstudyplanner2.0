@@ -55,7 +55,7 @@ def parse_date(s:str)-> Optional[date]:
 class storage:
       """Tiny JSON storage helper"""
       def __init__(self,path: str):
-            return []
+            self.path=path
       def load(self) ->List[Task]:
             if not os.path.exists(self.path):
                   return[]
@@ -63,14 +63,14 @@ class storage:
                   with open(self.path,"r", encoding="utf-8") as f:
                         raw= json.load(f)
             except Exception:
-                  return []
+                  return[]
             tasks: List[Task]=[]
             if isinstance(raw,list):
                   for item in raw:
                         if not isinstance(item,dict):
                               continue
                         
-                  t= Task(
+                  
                         tid=str(item.get("id") or uuid.uuid4())
                         title=str(item.get("title") or "").strip()
                         subject=str(item.get("subject") or "").strip()
@@ -81,8 +81,10 @@ class storage:
                         if status not in statusoptions:
                           status="To Do"
                         tasks.append(Task(id=tid, title=title, subject=subject,duedate=duedate,status=status))
+                  
                         
-                  )
+                        
+                  
                   tasks.append(t)
             return tasks
       def save(self, tasks: List[Task]) -> None:
@@ -151,17 +153,37 @@ class App(ttk.Frame):
             self.search_var=StringVar()
             self.sort_key="duedate"
             self.sort_reverse=False
-            self.storage=Storage(DATA_FILE)
+            self.storage=storage(DATA_FILE)
             self._apply_styles()
             self._build_header()
             self._build_center()
             self._build_statusbar()
             self._tick()
+            self._build_menu()
             self.bind_all("<Control-n>",lambda e:self.open_add_dialog())
             self.bind_all("<Delete>",lambda e:self.delete_selected())
             self.bind_all("<Control-e>",lambda e:self.open_edit_dialog())
             self.tree.bind("<Button-1>",lambda e:self._on_tree_click, add="+")  
-            self._load_initial()   
+            self._load_initial()  
+      def _build_menu(self):
+            root = self.winfo_toplevel()
+            menubar = tk.Menu(root)
+
+            file_menu = tk.Menu(menubar, tearoff=0)
+            file_menu.add_command(label="Import CSV...",  command=self.import_csv)
+            file_menu.add_command(label="Export CSV...",  command=self.export_csv)
+            file_menu.add_separator()
+            file_menu.add_command(label="Backup JSON...", command=self.backup_json)
+            file_menu.add_command(label="Restore JSON...", command=self.restore_json)
+            file_menu.add_separator()
+            file_menu.add_command(label="File", menu=file_menu)
+            root.config(menu=menubar)
+
+            menubar.add_cascade(label="File", menu=file_menu)
+            root.config(menu=menubar)
+      
+
+
 
       def _apply_styles(self):
             s=ttk.Style()
@@ -385,6 +407,134 @@ class App(ttk.Frame):
                   self.storage.save(self.tasks)
             except Exception as e:
                   messagebox.showerror("Save Error", f"Could not save tasks:\n{e}")
+      def import_csv(self):
+            path= fd.askopenfilename(
+                  title="Import CSV",
+                  filetypes=[("CSV Files", "*.csv"), ("ALL Files", "*.*")]
+            )
+            if not path:
+                  return
+            added = skipped_dup=invalid = 0
+            existing_ids = {t.id for t in self.tasks}
+            try:
+                  with open(path, "r", encoding="utf-8", newline="") as f:
+                        reader=csv.DictReader(f)
+                        missing = [h for h in ["title", "subject", "due_date"]if h not in reader.fieldnames]
+                        if missing:
+                              messagebox.showerror("Import CSV", f"Missing required column(s): {','.join(missing)}")
+                              return
+                        for row in reader:
+                              title=(row.get("title")or "").strip()
+                              subject=(row.get("subject")or "").strip()
+                              duedate=(row.get("duedate")or "").strip()
+                              status=(row.get("status")or "To Do").strip()
+                              tid=(row.get("id")or "").strip()
+                              if not title or not subject or not valid_date(duedate):
+                                    invalid +=1
+                                    continue
+                              if status not in statusoptions:
+                                    status="To Do"
+                              if not tid:
+                                    tid= str(uuid.uuid4())
+                              if tid in existing_ids:
+                                    skipped_dup +=1
+                                    continue
+                              self.tasks.append(Task(id=tid,title=title, subject=subject,duedate=duedate, status=status))
+                              existing_ids.add(tid)
+                              added +=1
+            except Exception as e:
+                  messagebox.showerror("Import CSV", f"Could not import file:\n{e}")
+                  return
+
+            self._persist()
+            self.refresh_views()
+            messagebox.showinfo(
+                  "Import CSV",
+                  f"Imported from: {os.path.basename(path)}\n\n"
+                  f"Added: {added}\n"
+                  f"Skipped (duplicate ids): {skipped_dup}\n"
+                  f"Invalid rows: {invalid}"
+            )
+
+      def export_csv(self):
+            path = fd.asksaveasfilename(
+                  title="Export CSV",
+                  defaultextension=".csv",
+                  filetypes=[("CSV Files", "*.csv")]
+
+            )
+            if not path:
+                  return
+                  
+            try:
+                  with open(path, "w", encoding="utf-8", newline="") as f:
+                        writer=csv.DictWriter(f, fieldnames=CSV_HEADERS)
+                        writer.writeheader()
+                        for t in self.tasks:
+                              writer.writerow({
+                                    "id": t.id,
+                                    "title": t.title,
+                                    "subject": t.subject,
+                                    "duedate": t.duedate,
+                                    "status": t.status
+                              })
+            except Exception as e:
+                  messagebox.showerror("Export CSV", f"Could not expert file:\n{e}")
+                  return
+            messagebox.showinfo("Export CSV", f"Exported {len(self.tasks)} task(s) to:\n{path}")
+      
+      def backup_json(self):
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            ts=datetime.now().strftime("%Y/%m/%d/%H/%M/%S")
+            path= os.path.join(BACKUP_DIR, f"planner-{ts}.json")
+
+            try:
+                  payload = [asdict(t) for t in self.tasks]
+                  with open(path, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                  messagebox.showerror("Backup JSON", f"Could not create backup:\n{e}")
+            messagebox.showerror("Backup JSON", f"Backup saved to:\n{path}")
+
+      def restore_json(self):
+            path=fd.askopenfilename(
+                  title="Restore from JSON",
+                  filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+            )
+            if not path:
+                  return
+            if not messagebox.askyesno("Restore JSON", "This will replace all current tasks.\nContinue?"):
+                  return
+            try:
+                  with open(path, "r", encoding="utf-8") as f:
+                       raw=json.load(f)
+            except Exception as e:
+                  messagebox.showerror("Restore JSON", f"Could not read backup:\n{e}")
+                  return
+            restored: List[Task]=[]
+            try:
+                  if isinstance(raw, list):
+                        for item in raw:
+                              if not isinstance(item,dict):
+                                    continue
+                              tid=str(item.get("id")or uuid.uuid4())
+                              title=str(item.get("title")or "").strip()
+                              subject=str(item.get("subject")or "").strip()
+                              duedate=str(item.get("duedate")or "").strip()
+                              status=str(item.get("status")or "").strip()
+                              if not title or not subject or not valid_date(duedate):
+                                    continue
+                              if status not in statusoptions:
+                                    status="To Do"
+                              restored.append(Task(id=tid, title=title, subject=subject,duedate=duedate,status=status))
+            except Exception as e:
+                  messagebox.showerror("Restore JSON", f"Backup content invalid:\n{e}")
+                  return
+            self.tasks=restored
+            self._persist()
+            self.refresh_views()
+            messagebox.showinfo("Restore JSON", f"Restored {len(self.tasks)} task(s from:\n{path})")
+     
       def on_close(self):
             try:
                   self.persist()
