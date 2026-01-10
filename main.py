@@ -321,13 +321,24 @@ class App(ttk.Frame):
       def _filtered_sorted(self) -> List[Task]:
             q=self.search_var.get().strip().lower() 
             items=self.tasks
+            status_filter=self.status_filter_var.get().strip()
             if q:
                   items=[t for t in items if q in t.title.lower() or q in t.subject.lower()]
-            keyfunc={
-                  "title":lambda t: t.title.lower(),
-                  "subject":lambda t: t.subject.lower(),
-                  "duedate":lambda t:t.duedate,
-            }.get(self.sort_key, lambda t:t.duedate)
+            if status_filter !="All":
+                  items=[t for t in items if t.status==status_filter]
+            def keyfunc(t:Task):
+                  if self.sort_key=="check":
+                        return 1 if t.status=="Done" else 0
+                  if self.sort_key=="title":
+                        return t.title.lower()
+                  if self.sort_key=="subject":
+                        return t.subject.lower()
+                  if self.sort_key=="duedate":
+                        return t.duedate
+                  if self.sort_key=="status":
+                        return STATUS_ORDER.get(t.status,999)
+                  return t.duedate
+                 
             return sorted(items, key=keyfunc,reverse=self.sort_reverse)
       def refresh_table(self):
             for iid in self.tree.get_children():
