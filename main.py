@@ -85,7 +85,7 @@ class storage:
                         
                         
                   
-                  tasks.append(t)
+                  
             return tasks
       def save(self, tasks: List[Task]) -> None:
             payload = [asdict(t) for t in tasks]
@@ -163,7 +163,7 @@ class App(ttk.Frame):
             self.bind_all("<Control-n>",lambda e:self.open_add_dialog())
             self.bind_all("<Delete>",lambda e:self.delete_selected())
             self.bind_all("<Control-e>",lambda e:self.open_edit_dialog())
-            self.tree.bind("<Button-1>",lambda e:self._on_tree_click, add="+")  
+            self.tree.bind("<Button-1>",self._on_tree_click, add="+")  
             self._load_initial()  
       def _build_menu(self):
             root = self.winfo_toplevel()
@@ -176,7 +176,8 @@ class App(ttk.Frame):
             file_menu.add_command(label="Backup JSON...", command=self.backup_json)
             file_menu.add_command(label="Restore JSON...", command=self.restore_json)
             file_menu.add_separator()
-            file_menu.add_command(label="File", menu=file_menu)
+            file_menu.add_command(label="Exit", command=self.on_close)
+            menubar.add_cascade(label="File", menu=file_menu)
             root.config(menu=menubar)
 
             menubar.add_cascade(label="File", menu=file_menu)
@@ -209,7 +210,7 @@ class App(ttk.Frame):
                   width=14
                   )
             self.cb_filter.pack(side=LEFT)
-            self.cb_filter.bind("<<ComboxSelected>>",lambda e: self.refresh_views())
+            self.cb_filter.bind("<<ComboboxSelected>>",lambda e: self.refresh_views())
             
             ttk.Button(top, text="Add Task (Ctrl+N)",bootstyle=SUCCESS,command=self.
             open_add_dialog).pack(side=RIGHT,padx=6)
@@ -286,7 +287,7 @@ class App(ttk.Frame):
                   task.duedate=newdue
                   task.status=newstatus
                   self.status("Task has been updated")
-                  self.persist()
+                  self._persist()
                   self.refresh_views()
             TaskDialog(self,on_save=apply_edits,task=task)         
             
@@ -294,7 +295,7 @@ class App(ttk.Frame):
             t=Task(id=str(uuid.uuid4()),title=title,subject=subject,duedate=due,status=status)
             self.tasks.append(t)
             self.status("Task Added")
-            self.persist()
+            self._persist()
             self.refresh_views()
 
       def delete_selected(self):
@@ -304,7 +305,7 @@ class App(ttk.Frame):
             if messagebox.askyesno("Delete", "Delete selected task?"):
                   self.tasks=[t for t in self.tasks if t.id !=iid]
                   self.status("Task Deleted")
-                  self.persist()
+                  self._persist()
                   self.refresh_views()
             
       def _selected_iid(self) -> Optional[str]:
@@ -395,14 +396,14 @@ class App(ttk.Frame):
                   task.status="Done"
                   self.status("Marked as Done")
             
-            self.persist()
+            self._persist()
             self.refresh_views()
       def _load_initial(self):
             loaded=self.storage.load()
             self.tasks=loaded
             self.refresh_views()
             self.status(f"Loaded {len(self.tasks)} task(s).")
-      def persist(self):
+      def _persist(self):
             try:
                   self.storage.save(self.tasks)
             except Exception as e:
@@ -419,7 +420,7 @@ class App(ttk.Frame):
             try:
                   with open(path, "r", encoding="utf-8", newline="") as f:
                         reader=csv.DictReader(f)
-                        missing = [h for h in ["title", "subject", "due_date"]if h not in reader.fieldnames]
+                        missing = [h for h in ["title", "subject", "duedate"]if h not in reader.fieldnames]
                         if missing:
                               messagebox.showerror("Import CSV", f"Missing required column(s): {','.join(missing)}")
                               return
@@ -446,7 +447,7 @@ class App(ttk.Frame):
                   messagebox.showerror("Import CSV", f"Could not import file:\n{e}")
                   return
 
-            self._persist()
+            self.__persist()
             self.refresh_views()
             messagebox.showinfo(
                   "Import CSV",
@@ -494,7 +495,7 @@ class App(ttk.Frame):
                         json.dump(payload, f, ensure_ascii=False, indent=2)
             except Exception as e:
                   messagebox.showerror("Backup JSON", f"Could not create backup:\n{e}")
-            messagebox.showerror("Backup JSON", f"Backup saved to:\n{path}")
+            messagebox.showinfo("Backup JSON", f"Backup saved to:\n{path}")
 
       def restore_json(self):
             path=fd.askopenfilename(
@@ -531,13 +532,13 @@ class App(ttk.Frame):
                   messagebox.showerror("Restore JSON", f"Backup content invalid:\n{e}")
                   return
             self.tasks=restored
-            self._persist()
+            self.__persist()
             self.refresh_views()
             messagebox.showinfo("Restore JSON", f"Restored {len(self.tasks)} task(s from:\n{path})")
      
       def on_close(self):
             try:
-                  self.persist()
+                  self._persist()
             finally:
                   self.winfo_toplevel().destroy()
 
@@ -549,8 +550,8 @@ def main():
 
             app=App(root)
 
+            root.protocol("WM_DELETE_WINDOW",app.on_close)
             root.mainloop()
-            root.protocol("WM_DELETE_WINDOW",app.on_close)  
       
 if __name__ == "__main__":
             main()
