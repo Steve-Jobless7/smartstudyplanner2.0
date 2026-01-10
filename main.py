@@ -180,8 +180,7 @@ class App(ttk.Frame):
             menubar.add_cascade(label="File", menu=file_menu)
             root.config(menu=menubar)
 
-            menubar.add_cascade(label="File", menu=file_menu)
-            root.config(menu=menubar)
+            
       
 
 
@@ -339,17 +338,18 @@ class App(ttk.Frame):
                   tags=["even" if i % 2 ==0 else "odd"]
                   chk=CHECK_FULL if t.status=="Done" else CHECK_EMPTY
                   
-            d=parse_date(t.duedate)
-            if d:
-                  if d < today:
-                        tags.append("overdue")
-                  elif d == today:
-                        tags.append("today")
-            self.tree.insert(
-                  "", tk.END, iid=t.id,
-                  values=(chk,t.title,t.subject,t.duedate, t.status),
-                  tags=tuple(tags)
-            )
+                  d=parse_date(t.duedate)
+                  if d:
+                        if d < today:
+                              tags.append("overdue")
+                        
+                        elif d == today:
+                              tags.append("today")
+                  self.tree.insert(
+                        "", tk.END, iid=t.id,
+                        values=(chk,t.title,t.subject,t.duedate, t.status),
+                        tags=tuple(tags)
+                  )  
 
       def refresh_views(self):
             self.refresh_table()
@@ -447,7 +447,7 @@ class App(ttk.Frame):
                   messagebox.showerror("Import CSV", f"Could not import file:\n{e}")
                   return
 
-            self.__persist()
+            self._persist()
             self.refresh_views()
             messagebox.showinfo(
                   "Import CSV",
@@ -486,7 +486,7 @@ class App(ttk.Frame):
       
       def backup_json(self):
             os.makedirs(BACKUP_DIR, exist_ok=True)
-            ts=datetime.now().strftime("%Y/%m/%d/%H/%M/%S")
+            ts=datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
             path= os.path.join(BACKUP_DIR, f"planner-{ts}.json")
 
             try:
@@ -495,6 +495,7 @@ class App(ttk.Frame):
                         json.dump(payload, f, ensure_ascii=False, indent=2)
             except Exception as e:
                   messagebox.showerror("Backup JSON", f"Could not create backup:\n{e}")
+                  return
             messagebox.showinfo("Backup JSON", f"Backup saved to:\n{path}")
 
       def restore_json(self):
@@ -532,7 +533,7 @@ class App(ttk.Frame):
                   messagebox.showerror("Restore JSON", f"Backup content invalid:\n{e}")
                   return
             self.tasks=restored
-            self.__persist()
+            self._persist()
             self.refresh_views()
             messagebox.showinfo("Restore JSON", f"Restored {len(self.tasks)} task(s from:\n{path})")
      
